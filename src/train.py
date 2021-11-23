@@ -41,17 +41,32 @@ class Trainer(object):
     def get_tokenizer(self):
         return self.tokenizer
     
+    def pbe_set(self, name):
+        if name.startswith("bert-base"):
+            self.tokenizer.pad_token = "[PAD]"
+            self.tokenizer.eos_token = "[SEP]"
+            self.tokenizer.bos_token = "[CLS]"
+        elif name.startswith("roberta"):
+            self.tokenizer.pad_token = "<pad>"
+            self.tokenizer.eos_token = "</s>"
+            self.tokenizer.bos_token = "<s>"
+        else:
+            self.tokenizer.pad_token = "[PAD]"
+            self.tokenizer.eos_token = "[SEP]"
+            self.tokenizer.bos_token = "[CLS]"
+
     def model_init(self):
         self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_path)
-        special_token = {"additional_special_tokens": ["[SEP]", "[CLS]"]}
-        self.tokenizer.add_special_tokens(special_token)
-        self.tokenizer.pad_token = "[PAD]"
-        self.tokenizer.eos_token = "[SEP]"
-        self.tokenizer.bos_token = "[CLS]"
+        # special_token = {"additional_special_tokens": ["[SEP]", "[CLS]"]}
+        # self.tokenizer.add_special_tokens(special_token)
+        self.pbe_set(self.tokenizer_path)
+        # if self.model_load:
+        #     self.model = torch.load(self.model_load)
+        # else:
+        self.model = BaseModel(self.config)
         if self.model_load:
-            self.model = torch.load(self.model_load)
+            self.model.load_state_dict(torch.load(self.model_load))
         else:
-            self.model = BaseModel(self.config)
             self.model.bert.resize_token_embeddings(len(self.tokenizer))
             self.model.bert.config.device = self.device
         self.model.to(self.device)
@@ -82,7 +97,7 @@ class Trainer(object):
         ]
         self.step = 0
         self.score = []
-        self.Loss_fn = torch.nn.MarginRankingLoss(-0.2)
+        self.Loss_fn = torch.nn.MarginRankingLoss(0.2)
         self.optimizer = AdamW(optimizer_grouped_parameters, self.config.lr, correct_bias=False)
         self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=train_size // self.config.opt_step, \
             num_training_steps=train_size * self.config.epoch // self.config.opt_step)
@@ -157,9 +172,9 @@ class Trainer(object):
     def save(self, score):
         path = self.model_save + "_score_{:.4f}.pkl".format(score)
         if self.local_rank == -1:
-            torch.save(self.model, path)
+            torch.save(self.model.state_dict(), path)
         else:
-            torch.save(self.model.module, path)
+            torch.save(self.model.module.state_dict(), path)
         logging.info("Save Model")
 
     def rm(self, score):

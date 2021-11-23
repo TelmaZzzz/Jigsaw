@@ -30,6 +30,8 @@ class BaseDataset(torch.utils.data.Dataset):
         self.labels = []
         self.tokenizer = tokenizer
         self.is_train = args.train
+        self.eos_token_id = args.eos_id
+        self.bos_token_id = args.bos_id
         self.build(Examples)
  
     def __getitem__(self, idx):
@@ -48,13 +50,13 @@ class BaseDataset(torch.utils.data.Dataset):
         s_list = self.tokenizer.tokenize(s)
         while len(s_list) > 510:
             s_list.pop()
-        return self.tokenizer.convert_tokens_to_ids(["[CLS]"] + s_list + ["[SEP]"])
+        return self.tokenizer.convert_tokens_to_ids(s_list)
 
     def build(self, Examples):
         for item in Examples:
-            sen1_input_ids = self._convert(item.sen1)
+            sen1_input_ids = [self.bos_token_id] + self._convert(item.sen1) + [self.eos_token_id]
             sen1_attention_mask = [1] * len(sen1_input_ids)
-            sen2_input_ids = self._convert(item.sen2)
+            sen2_input_ids = [self.bos_token_id] + self._convert(item.sen2) + [self.eos_token_id]
             sen2_attention_mask = [1] * len(sen2_input_ids)
             labels = [int(item.label)]
             self.sen1_input_ids.append(sen1_input_ids)
@@ -157,6 +159,9 @@ def train(args):
     BaseTrainer.model_init()
     tokenizer = BaseTrainer.get_tokenizer()
     args.pad_id = tokenizer.pad_token_id
+    args.eos_id = tokenizer.eos_token_id
+    args.bos_id = tokenizer.bos_token_id
+    logging.info(f"pad_id:{args.pad_id}. eos_id:{args.eos_id}. bos_id:{args.bos_id}")
     train_dataset = BaseDataset(train_data, tokenizer, args)
     valid_dataset = BaseDataset(valid_data, tokenizer, args)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
