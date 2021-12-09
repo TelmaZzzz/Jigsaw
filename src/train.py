@@ -4,10 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import AutoTokenizer, AdamW, get_linear_schedule_with_warmup
+from transformers import AutoTokenizer, AdamW, get_linear_schedule_with_warmup, get_cosine_with_hard_restarts_schedule_with_warmup
 from model import *
 import logging
 import utils
+from torch.optim import lr_scheduler
 
 
 class ModelConfig(object):
@@ -20,6 +21,9 @@ class ModelConfig(object):
         self.epoch = args.epoch
         self.opt_step = args.opt_step
         self.eval_step = args.eval_step
+        self.margin = args.margin
+        self.Tmax = args.Tmax
+        self.min_lr = args.min_lr
 
 
 class Trainer(object):
@@ -40,34 +44,13 @@ class Trainer(object):
     
     def get_tokenizer(self):
         return self.tokenizer
-    
-    def pbe_set(self, name):
-        if name.startswith("bert-base"):
-            self.tokenizer.pad_token = "[PAD]"
-            self.tokenizer.eos_token = "[SEP]"
-            self.tokenizer.bos_token = "[CLS]"
-        elif name.startswith("roberta"):
-            self.tokenizer.pad_token = "<pad>"
-            self.tokenizer.eos_token = "</s>"
-            self.tokenizer.bos_token = "<s>"
-        else:
-            self.tokenizer.pad_token = "[PAD]"
-            self.tokenizer.eos_token = "[SEP]"
-            self.tokenizer.bos_token = "[CLS]"
 
     def model_init(self):
         self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_path)
-        # special_token = {"additional_special_tokens": ["[SEP]", "[CLS]"]}
-        # self.tokenizer.add_special_tokens(special_token)
-        self.pbe_set(self.tokenizer_path)
-        # if self.model_load:
-        #     self.model = torch.load(self.model_load)
-        # else:
         self.model = BaseModel(self.config)
         if self.model_load:
-            self.model.load_state_dict(torch.load(self.model_load))
+            self.model.load_state_dict(torch.load(self.model_load, map_location=torch.device('cpu')))
         else:
-            self.model.bert.resize_token_embeddings(len(self.tokenizer))
             self.model.bert.config.device = self.device
         self.model.to(self.device)
         if self.local_rank != -1:
@@ -97,11 +80,13 @@ class Trainer(object):
         ]
         self.step = 0
         self.score = []
-        self.Loss_fn = torch.nn.MarginRankingLoss(0.2)
+        self.Loss_fn = torch.nn.MarginRankingLoss(self.config.margin)
         self.optimizer = AdamW(optimizer_grouped_parameters, self.config.lr, correct_bias=False)
-        self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=train_size // self.config.opt_step, \
-            num_training_steps=train_size * self.config.epoch // self.config.opt_step)
-
+        # self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=train_size // self.config.opt_step, \
+        #     num_training_steps=train_size * self.config.epoch // self.config.opt_step)
+        # self.scheduler = get_cosine_with_hard_restarts_schedule_with_warmup(self.optimizer, num_warmup_steps=train_size // self.config.opt_step, \
+            # num_training_steps=train_size * self.config.epoch // self.config.opt_step)
+        self.scheduler = lr_scheduler.CosineAnnealingLR(self.optimizer,T_max=self.config.Tmax, eta_min=self.config.min_lr)
     def _get_logits(self, batch):
         sen1_input_ids = batch["sen1_input_ids"].to(self.device)
         sen2_input_ids = batch["sen2_input_ids"].to(self.device)
@@ -182,3 +167,25 @@ class Trainer(object):
         if os.path.exists(path):
             os.remove(path)
             logging.info("Remove Model")
+
+    def freeze(self):
+        for k, v in self.model.named_parameters():
+            if "layer" in k:
+                v.requires_grad = False
+    
+    def unfreeze(self, layer):
+        flag = False
+        if layer == -1:
+            flag = True
+        for k, v in self.model.named_parameters():
+            if f"layer.{layer}" in k:
+                flag = True
+                utils.debug("k", k)
+            v.requires_grad = flag
+    
+    def log_parameters(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                logging.info(f"train name: {name}")
+            else:
+                logging.info(f"force name: {name}")

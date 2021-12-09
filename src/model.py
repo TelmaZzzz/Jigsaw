@@ -12,9 +12,11 @@ class ClassificationHead(nn.Module):
         self.dance = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(l_model, i_model),
-            nn.ReLU(inplace=False),
             nn.Dropout(dropout),
-            nn.Linear(i_model, r_model)
+            nn.Linear(i_model, 256),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(dropout),
+            nn.Linear(256, r_model)
         )
     
     def forward(self, x):

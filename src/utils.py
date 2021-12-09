@@ -83,9 +83,9 @@ def text_cleaning(text):
     template = re.compile(r'https?://\S+|www\.\S+') #Removes website links
     text = template.sub(r'', text)
     
-    soup = BeautifulSoup(text, 'lxml') #Removes HTML tags
-    only_text = soup.get_text()
-    text = only_text
+    # soup = BeautifulSoup(text, 'lxml') #Removes HTML tags
+    # only_text = soup.get_text()
+    # text = only_text
     
     emoji_pattern = re.compile("["
                                u"\U0001F600-\U0001F64F"  # emoticons
@@ -101,7 +101,7 @@ def text_cleaning(text):
     text = re.sub(' +', ' ', text) #Remove Extra Spaces
     text = text.strip() # remove spaces at the beginning and at the end of string
 
-    return text
+    return text.lower()
 
 
 def set_seed(seed):
@@ -116,3 +116,55 @@ def d2s(dt, time=False):
         return dt.strftime("%Y_%m_%d")
     else:
         return dt.strftime("%Y_%m_%d_%H_%M")
+
+
+def draw(path, data):
+    logging.info(f"Write path: {path}. data length: {len(data)}")
+    with open(path, "w", encoding="utf-8") as f:
+        csv_write = csv.writer(f)
+        csv_write.writerow(["worker_id", "sen1", "sen2"])
+        for item in data:
+            csv_write.writerow([item.id, item.sen1, item.sen2])
+
+
+def clean_text(text):
+    template = re.compile(r'https?://\S+|www\.\S+') #Removes website links
+    text = template.sub(r'', text)
+    emoji_pattern = re.compile("["
+                               u"\U0001F600-\U0001F64F"  # emoticons
+                               u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+                               u"\U0001F680-\U0001F6FF"  # transport & map symbols
+                               u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+                               u"\U00002702-\U000027B0"
+                               u"\U000024C2-\U0001F251"
+                               "]+", flags=re.UNICODE)
+    text = emoji_pattern.sub(r'', text)
+    # text = text.replace('\n', ' \n ')  
+    text = text.replace(r'([a-zA-Z]+)([/!?.])([a-zA-Z]+)',r'\1 \2 \3')
+    # Replace repeating characters more than 3 times to length of 3
+    text = text.replace(r'([*!?\'])\1\1{2,}',r'\1\1\1')    
+    # Add space around repeating characters
+    text = text.replace(r'([*!?\']+)',r' \1 ')    
+    # patterns with repeating characters 
+    text = text.replace(r'([a-zA-Z])\1{2,}\b',r'\1\1')
+    text = text.replace(r'([a-zA-Z])\1\1{2,}\B',r'\1\1\1')
+    text = text.replace(r'[ ]{2,}',' ')
+    text = re.sub(' +', ' ', text).strip() #Remove Extra Spaces
+    return text.lower() 
+
+
+def clean(data, col):  # Replace each occurrence of pattern/regex in the Series/Index
+
+    # Clean some punctutations
+    data[col] = data[col].str.replace('\n', ' \n ')  
+    data[col] = data[col].str.replace(r'([a-zA-Z]+)([/!?.])([a-zA-Z]+)',r'\1 \2 \3')
+    # Replace repeating characters more than 3 times to length of 3
+    data[col] = data[col].str.replace(r'([*!?\'])\1\1{2,}',r'\1\1\1')    
+    # Add space around repeating characters
+    data[col] = data[col].str.replace(r'([*!?\']+)',r' \1 ')    
+    # patterns with repeating characters 
+    data[col] = data[col].str.replace(r'([a-zA-Z])\1{2,}\b',r'\1\1')
+    data[col] = data[col].str.replace(r'([a-zA-Z])\1\1{2,}\B',r'\1\1\1')
+    data[col] = data[col].str.replace(r'[ ]{2,}',' ').str.strip()   
+    
+    return data  # the function returns the processed value
