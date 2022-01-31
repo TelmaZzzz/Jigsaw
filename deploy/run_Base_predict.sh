@@ -4,15 +4,17 @@
 export PYTHONPATH="$HOME/opt/tiger/jigsaw"
 ROOT="$HOME/opt/tiger/jigsaw"
 MODEL="Base"
-TOKENIZER="bert-base-cased"
-TEST_PATH="$ROOT/data/comments_to_score.csv"
+TOKENIZER="roberta-base"
+PRETRAIN="roberta-base"
+TEST_PATH="$ROOT/data/validation_data.csv"
 
-# python -m torch.distributed.launch --nproc_per_node 1 ../src/OrderBase.py \
+# python -m torch.distributed.launch --nproc_per_node 1 ../src/Base.py \
 python ../src/Base.py \
 --predict \
 --test_path="$TEST_PATH" \
 --tokenizer_path="$TOKENIZER" \
---model_load="$ROOT/model/Base/2021_11_20_23_27_score_68.6981.pkl" \
+--pretrain_path="$PRETRAIN" \
+--model_load="$ROOT/model/Base/2021_12_09_22_51_fold_0_score_70.0213.pkl" \
 --output_path="$ROOT/output/rank_1.csv" \
---batch_size=6 \
+--batch_size=32 \
 > ../log/Base_predict.log 2>&1 &
